@@ -1,6 +1,30 @@
 use redis::{Commands, RedisResult};
 use std::collections::HashMap;
 
+macro_rules! check_conn_open {
+    ($ins:expr) => {
+        {
+            if $ins.conn.is_none() {
+                return Err(RedisAccessorError {
+                    err_type: RedisAccessorErrorType::ConnNotOpen
+                });
+            }
+        }
+    };
+}
+
+macro_rules! check_async_conn_open {
+    ($ins:expr) => {
+        {
+            if $ins.async_conn.is_none() {
+                return Err(RedisAccessorError {
+                    err_type: RedisAccessorErrorType::ConnNotOpen
+                });
+            }
+        }
+    };
+}
+
 #[derive(Debug)]
 pub struct RedisAccessorError {
     err_type: RedisAccessorErrorType
@@ -8,7 +32,10 @@ pub struct RedisAccessorError {
 
 #[derive(Debug)]
 enum RedisAccessorErrorType {
-    OpenConnError(redis::RedisError)
+    ConnNotOpen,
+    OpenConnError(redis::RedisError),
+    GetContentError(redis::RedisError),
+    SetContentError(redis::RedisError)
 }
 
 pub struct RedisAccessor<'a> {
@@ -111,54 +138,62 @@ impl<'a> RedisAccessor<'a> {
         Ok(())
     }
 
-    pub fn get(&mut self, key: &str) -> Result<redis::Value, redis::ErrorKind> {
-        if self.conn.is_none() {
-            return Err(redis::ErrorKind::ClientError);
+    async fn async_pipe_execute(pipe: &mut redis::Pipeline, async_conn: &mut redis::aio::Connection) -> Result<(), RedisAccessorError> {
+        let redis_rst: RedisResult<()> = pipe.query_async(async_conn).await;
+        match redis_rst {
+            Ok(_) => Ok(()),
+            Err(e) => Err(RedisAccessorError {
+                err_type: RedisAccessorErrorType::SetContentError(e)
+            })
         }
+    }
+
+    pub fn get(&mut self, key: &str) -> Result<redis::Value, RedisAccessorError> {
+        check_conn_open!(self);
         let rst: RedisResult<redis::Value> = self.conn.as_mut().unwrap().get(key);
         match rst {
             Ok(r) => Ok(r),
-            Err(e) => Err(redis::ErrorKind::ResponseError)
+            Err(e) => Err(RedisAccessorError {
+                err_type: RedisAccessorErrorType::GetContentError(e)
+            })
         }
     }
 
-    pub async fn async_get<T: redis::FromRedisValue>(&mut self, key: &str) -> Result<T, redis::ErrorKind> {
-        if self.async_conn.is_none() {
-            return Err(redis::ErrorKind::ClientError);
-        }
+    pub async fn async_get<T: redis::FromRedisValue>(&mut self, key: &str) -> Result<T, RedisAccessorError> {
+        check_async_conn_open!(self);
         let rst: RedisResult<T> = redis::cmd("GET").arg(key).query_async(self.async_conn.as_mut().unwrap()).await;
         match rst {
             Ok(r) => Ok(r),
-            Err(e) => Err(redis::ErrorKind::ResponseError)
+            Err(e) => Err(RedisAccessorError {
+                err_type: RedisAccessorErrorType::GetContentError(e)
+            })
         }
     }
 
-    pub fn set(&mut self, key: &str, val: &str, ex: usize) -> Result<(), redis::ErrorKind> {
-        if self.conn.is_none() {
-            return Err(redis::ErrorKind::ClientError);
+    pub fn setex(&mut self, key: &str, val: &str, ex: usize) -> Result<(), RedisAccessorError> {
+        check_conn_open!(self);
+        let redis_rst: RedisResult<redis::Value> = self.conn.as_mut().unwrap().set_ex(key, val, ex);
+        match redis_rst {
+            Ok(_) => Ok(()),
+            Err(e) => Err(RedisAccessorError {
+                err_type: RedisAccessorErrorType::SetContentError(e)
+            })
         }
-        let rst: RedisResult<redis::Value> = self.conn.as_mut().unwrap().set_ex(key, val, ex);
-        if rst.is_err() {
-            return Err(redis::ErrorKind::ResponseError)
-        }
-        Ok(())
     }
 
-    pub async fn async_set(&mut self, key: &str, val: &str, ex: usize) -> Result<(), redis::ErrorKind> {
-        if self.async_conn.is_none() {
-            return Err(redis::ErrorKind::ClientError);
+    pub async fn async_setex(&mut self, key: &str, val: &str, ex: usize) -> Result<(), RedisAccessorError> {
+        check_async_conn_open!(self);
+        let redis_rst: RedisResult<redis::Value> = redis::cmd("SETEX").arg(key).arg(ex).arg(val).query_async(self.async_conn.as_mut().unwrap()).await;
+        match redis_rst {
+            Ok(_) => Ok(()),
+            Err(e) => Err(RedisAccessorError {
+                err_type: RedisAccessorErrorType::SetContentError(e)
+            })
         }
-        let rst: RedisResult<redis::Value> = redis::cmd("SETEX").arg(key).arg(ex).arg(val).query_async(self.async_conn.as_mut().unwrap()).await;
-        if rst.is_err() {
-            return Err(redis::ErrorKind::ResponseError)
-        }
-        Ok(())
     }
 
-    pub async fn async_multi_hmset(&mut self, dataset: Vec<(String, &HashMap<String, String>, usize)>) -> Result<(), redis::ErrorKind> {
-        if self.async_conn.is_none() {
-            return Err(redis::ErrorKind::ClientError);
-        }
+    pub async fn async_multi_hmset_expire(&mut self, dataset: Vec<(String, &HashMap<String, String>, usize)>) -> Result<(), RedisAccessorError> {
+        check_async_conn_open!(self);
         if dataset.is_empty() {
             return Ok(());
         }
@@ -171,17 +206,11 @@ impl<'a> RedisAccessor<'a> {
             pipe = pipe.cmd("HMSET").arg(data.0.clone()).arg(kv.as_slice());
             pipe = pipe.cmd("EXPIRE").arg(data.0).arg(data.2);
         }
-        let rst: RedisResult<()> = pipe.query_async(self.async_conn.as_mut().unwrap()).await;
-        if rst.is_err() {
-            return Err(redis::ErrorKind::ResponseError)
-        }
-        Ok(())
+        RedisAccessor::async_pipe_execute(pipe, self.async_conn.as_mut().unwrap()).await
     }
 
-    pub async fn async_multi_set(&mut self, dataset: Vec<(String, String, usize)>) -> Result<(), redis::ErrorKind> {
-        if self.async_conn.is_none() {
-            return Err(redis::ErrorKind::ClientError);
-        }
+    pub async fn async_multi_setex(&mut self, dataset: Vec<(String, String, usize)>) -> Result<(), RedisAccessorError> {
+        check_async_conn_open!(self);
         if dataset.is_empty() {
             return Ok(());
         }
@@ -189,10 +218,18 @@ impl<'a> RedisAccessor<'a> {
         for data in dataset {
             pipe = pipe.cmd("SETEX").arg(data.0).arg(data.2).arg(data.1);
         }
-        let rst: RedisResult<()> = pipe.query_async(self.async_conn.as_mut().unwrap()).await;
-        if rst.is_err() {
-            return Err(redis::ErrorKind::ResponseError)
+        RedisAccessor::async_pipe_execute(pipe, self.async_conn.as_mut().unwrap()).await
+    }
+
+    pub async fn async_multi_setnx(&mut self, dataset: Vec<(String, String)>) -> Result<(), RedisAccessorError> {
+        check_async_conn_open!(self);
+        if dataset.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        let mut pipe = &mut redis::pipe();
+        for data in dataset {
+            pipe = pipe.cmd("SETNX").arg(data.0).arg(data.1);
+        }
+        RedisAccessor::async_pipe_execute(pipe, self.async_conn.as_mut().unwrap()).await
     }
 }
