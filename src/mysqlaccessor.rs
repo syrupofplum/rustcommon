@@ -7,7 +7,7 @@ pub struct MySQLAccessor<'a> {
     pub(crate) host: &'a str,
     pub(crate) port: u16,
     pub(crate) user: &'a str,
-    pub(crate) pswd: &'a str,
+    pub(crate) passwd: &'a str,
     pub(crate) db: &'a str,
     pub(crate) charset: &'a str,
 
@@ -20,7 +20,7 @@ impl<'a> MySQLAccessor<'a> {
             host: "localhost",
             port: 3308,
             user: "root",
-            pswd: "",
+            passwd: "",
             db: "",
             charset: "utf8",
             conn: None,
@@ -43,8 +43,8 @@ impl<'a> MySQLAccessor<'a> {
         self
     }
 
-    pub fn pswd(mut self, pswd: &'a str) -> Self {
-        self.pswd = pswd;
+    pub fn passwd(mut self, passwd: &'a str) -> Self {
+        self.passwd = passwd;
         self
     }
 
@@ -61,7 +61,7 @@ impl<'a> MySQLAccessor<'a> {
     fn get_connect_option(&self) -> MySqlConnectOptions {
         sqlx::mysql::MySqlConnectOptions::new()
             .username(self.user)
-            .password(self.pswd)
+            .password(self.passwd)
             .host(self.host)
             .port(self.port)
             .database(self.db)
@@ -78,7 +78,7 @@ impl<'a> MySQLAccessor<'a> {
     }
 
     pub async fn async_open_conn_pool(&mut self) -> Result<(), sqlx::Error> {
-        // let connect_uri = format!("mysql://{}:{}@{}:{}/{}", self.user, self.pswd, self.host, self.port, self.db);
+        // let connect_uri = format!("mysql://{}:{}@{}:{}/{}", self.user, self.passwd, self.host, self.port, self.db);
         let connect_options = self.get_connect_option();
         self.conn_pool = match sqlx::MySqlPool::connect_with(connect_options).await {
             Ok(pool) => Some(pool),

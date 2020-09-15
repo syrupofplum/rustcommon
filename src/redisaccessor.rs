@@ -42,7 +42,7 @@ pub struct RedisAccessor<'a> {
     pub(crate) host: &'a str,
     pub(crate) port: u16,
     pub(crate) user: &'a str,
-    pub(crate) pswd: &'a str,
+    pub(crate) passwd: &'a str,
     pub(crate) db: i64,
 
     client: Option<redis::Client>,
@@ -56,7 +56,7 @@ impl<'a> RedisAccessor<'a> {
             host: "localhost",
             port: 6380,
             user: "",
-            pswd: "",
+            passwd: "",
             db: 0,
 
             client: None,
@@ -80,8 +80,8 @@ impl<'a> RedisAccessor<'a> {
         self
     }
 
-    pub fn pswd(mut self, pswd: &'a str) -> Self {
-        self.pswd = pswd;
+    pub fn passwd(mut self, passwd: &'a str) -> Self {
+        self.passwd = passwd;
         self
     }
 
@@ -102,8 +102,8 @@ impl<'a> RedisAccessor<'a> {
         if self.user != "" {
             connection_info.username = Some(String::from(self.user));
         }
-        if self.pswd != "" {
-            connection_info.passwd = Some(String::from(self.pswd));
+        if self.passwd != "" {
+            connection_info.passwd = Some(String::from(self.passwd));
         }
         let client = redis::Client::open(connection_info).map_err(map_redis_err)?;
         self.client = Some(client);
@@ -126,8 +126,8 @@ impl<'a> RedisAccessor<'a> {
         if self.user != "" {
             connection_info.username = Some(String::from(self.user));
         }
-        if self.pswd != "" {
-            connection_info.passwd = Some(String::from(self.pswd));
+        if self.passwd != "" {
+            connection_info.passwd = Some(String::from(self.passwd));
         }
         let client = redis::Client::open(connection_info).map_err(map_redis_err)?;
         self.client = Some(client);
