@@ -6,7 +6,7 @@ fn get_redis_client_test<'a>() -> redisaccessor::RedisAccessor<'a> {
     redisaccessor::RedisAccessor::new()
         .host("localhost")
         .port(6379)
-        .pswd("")
+        .passwd("")
         .db(0)
 }
 

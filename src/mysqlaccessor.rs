@@ -3,6 +3,30 @@ use futures::TryStreamExt;
 use sqlx::mysql::{MySqlRow, MySqlConnectOptions};
 use sqlx::Connection;
 
+macro_rules! check_conn_open {
+    ($ins:expr) => {
+        {
+            if $ins.conn.is_none() {
+                return Err(MysqlAccessorError {
+                    err_type: MysqlAccessorErrorType::ConnNotOpen
+                });
+            }
+        }
+    };
+}
+
+#[derive(Debug)]
+pub struct MysqlAccessorError {
+    err_type: MysqlAccessorErrorType
+}
+
+#[derive(Debug)]
+enum MysqlAccessorErrorType {
+    ConnNotOpen,
+    OpenConnError(sqlx::Error),
+    SqlSelectError(sqlx::Error)
+}
+
 pub struct MySQLAccessor<'a> {
     pub(crate) host: &'a str,
     pub(crate) port: u16,
@@ -14,6 +38,7 @@ pub struct MySQLAccessor<'a> {
     pub(crate) conn: Option<sqlx::MySqlConnection>,
     pub(crate) conn_pool: Option<sqlx::MySqlPool>
 }
+
 impl<'a> MySQLAccessor<'a> {
     pub fn new() -> Self {
         Self {
@@ -68,7 +93,7 @@ impl<'a> MySQLAccessor<'a> {
             .charset(self.charset)
     }
 
-    pub async fn async_open_conn(&mut self) -> Result<(), sqlx::Error> {
+    pub async fn async_open_conn(&mut self) -> Result<(), MysqlAccessorError> {
         let connect_options = self.get_connect_option();
         self.conn = match sqlx::MySqlConnection::connect_with(&connect_options).await {
             Ok(conn) => Some(conn),
@@ -77,7 +102,7 @@ impl<'a> MySQLAccessor<'a> {
         Ok(())
     }
 
-    pub async fn async_open_conn_pool(&mut self) -> Result<(), sqlx::Error> {
+    pub async fn async_open_conn_pool(&mut self) -> Result<(), MysqlAccessorError> {
         // let connect_uri = format!("mysql://{}:{}@{}:{}/{}", self.user, self.passwd, self.host, self.port, self.db);
         let connect_options = self.get_connect_option();
         self.conn_pool = match sqlx::MySqlPool::connect_with(connect_options).await {
@@ -88,7 +113,7 @@ impl<'a> MySQLAccessor<'a> {
     }
 
     pub async fn async_do_sql(&mut self, sql: &str) -> Result<Option<Vec<sqlx::mysql::MySqlRow>>, sqlx::Error> {
-        if self.conn.is_none() {
+        if self.conn_pool.is_none() {
             return Err(sqlx::Error::PoolClosed);
         }
         let mut rows = sqlx::query(sql)
