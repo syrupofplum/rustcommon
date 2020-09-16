@@ -1,16 +1,29 @@
+mod test_env;
+
 use rustcommon::mysqlaccessor;
 
 use tokio;
 use sqlx::Row;
 
 fn get_mysql_client_test<'a>() -> mysqlaccessor::MySQLAccessor<'a> {
-    mysqlaccessor::MySQLAccessor::new()
+    let env_map_option = test_env::init();
+    let get_default = || mysqlaccessor::MySQLAccessor::new()
         .host("localhost")
         .port(3306)
         .user("root")
         .passwd("")
         .db("test")
-        .charset("utf8")
+        .charset("utf8");
+    match env_map_option {
+        Some(env_map) => {
+            if env_map.contains_key("mysql.host") && env_map.contains_key("mysql.port") {
+                return get_default();
+            }
+            get_default()
+        },
+        None => get_default()
+    }
+
 }
 
 #[tokio::test]
