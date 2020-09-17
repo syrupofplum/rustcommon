@@ -1,12 +1,24 @@
 use sqlx;
 use futures::TryStreamExt;
 use sqlx::mysql::{MySqlRow, MySqlConnectOptions};
-use sqlx::Connection;
+use sqlx::{Connection, Row};
 
 macro_rules! check_conn_open {
     ($ins:expr) => {
         {
             if $ins.conn.is_none() {
+                return Err(MysqlAccessorError {
+                    err_type: MysqlAccessorErrorType::ConnNotOpen
+                });
+            }
+        }
+    };
+}
+
+macro_rules! check_conn_pool_open {
+    ($ins:expr) => {
+        {
+            if $ins.conn_pool.is_none() {
                 return Err(MysqlAccessorError {
                     err_type: MysqlAccessorErrorType::ConnNotOpen
                 });
@@ -24,7 +36,9 @@ pub struct MysqlAccessorError {
 enum MysqlAccessorErrorType {
     ConnNotOpen,
     OpenConnError(sqlx::Error),
-    SqlSelectError(sqlx::Error)
+    SqlSelectError(sqlx::Error),
+    SqlFetchRowError(sqlx::Error),
+    SqlFetchColumnError(sqlx::Error),
 }
 
 pub struct MySQLAccessor<'a> {
@@ -113,27 +127,27 @@ impl<'a> MySQLAccessor<'a> {
         Ok(())
     }
 
-    pub async fn async_do_sql(&mut self, sql: &str) -> Result<Option<Vec<sqlx::mysql::MySqlRow>>, sqlx::Error> {
-        if self.conn.is_none() {
-            return Err(sqlx::Error::PoolClosed);
-        }
+    pub async fn async_do_sql(&mut self, sql: &str) -> Result<Option<Vec<sqlx::mysql::MySqlRow>>, MysqlAccessorError> {
+        check_conn_open!(self);
         let mut rows = sqlx::query(sql)
             .fetch(self.conn.as_mut().unwrap());
         let mut rst: Vec<MySqlRow> = Vec::new();
-        while let Some(row) = rows.try_next().await? {
+        while let Some(row) = rows.try_next().await.map_err(move |e| MysqlAccessorError {
+            err_type: MysqlAccessorErrorType::SqlFetchRowError(e)
+        })? {
             rst.push(row);
         }
         Ok(Some(rst))
     }
 
-    pub async fn async_do_sql_pool(&self, sql: &str) -> Result<Option<Vec<sqlx::mysql::MySqlRow>>, sqlx::Error> {
-        if self.conn_pool.is_none() {
-            return Err(sqlx::Error::PoolClosed);
-        }
+    pub async fn async_do_sql_pool(&self, sql: &str) -> Result<Option<Vec<sqlx::mysql::MySqlRow>>, MysqlAccessorError> {
+        check_conn_pool_open!(self);
         let mut rows = sqlx::query(sql)
             .fetch(self.conn_pool.as_ref().unwrap());
         let mut rst: Vec<MySqlRow> = Vec::new();
-        while let Some(row) = rows.try_next().await? {
+        while let Some(row) = rows.try_next().await.map_err(move |e| MysqlAccessorError {
+            err_type: MysqlAccessorErrorType::SqlFetchRowError(e)
+        })? {
             rst.push(row);
         }
         Ok(Some(rst))
