@@ -1,13 +1,28 @@
+mod test_env;
+
 use rustcommon::redisaccessor;
 
 use tokio;
+use log::kv::Source;
 
 fn get_redis_client_test<'a>() -> redisaccessor::RedisAccessor<'a> {
-    redisaccessor::RedisAccessor::new()
+    let get_default = || redisaccessor::RedisAccessor::new()
         .host("localhost")
         .port(6379)
         .passwd("")
-        .db(0)
+        .db(0);
+    let env_map = &test_env::ENV_CONFIG;
+    if env_map.contains_key("redis.host") &&
+        env_map.contains_key("redis.port") &&
+        env_map.contains_key("redis.passwd") &&
+        env_map.contains_key("redis.db") {
+        return redisaccessor::RedisAccessor::new()
+            .host(env_map.get("redis.host").unwrap())
+            .port(env_map.get("redis.port").unwrap().parse::<u16>().unwrap())
+            .passwd(env_map.get("redis.passwd").unwrap())
+            .db(env_map.get("redis.db").unwrap().parse::<i64>().unwrap());
+    }
+    get_default()
 }
 
 #[tokio::test]

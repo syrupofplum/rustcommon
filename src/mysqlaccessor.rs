@@ -95,9 +95,10 @@ impl<'a> MySQLAccessor<'a> {
 
     pub async fn async_open_conn(&mut self) -> Result<(), MysqlAccessorError> {
         let connect_options = self.get_connect_option();
+        println!("{:?}", connect_options);
         self.conn = match sqlx::MySqlConnection::connect_with(&connect_options).await {
             Ok(conn) => Some(conn),
-            Err(e) => None
+            Err(e) => {println!("{:?}", e);None}
         };
         Ok(())
     }
@@ -113,7 +114,7 @@ impl<'a> MySQLAccessor<'a> {
     }
 
     pub async fn async_do_sql(&mut self, sql: &str) -> Result<Option<Vec<sqlx::mysql::MySqlRow>>, sqlx::Error> {
-        if self.conn_pool.is_none() {
+        if self.conn.is_none() {
             return Err(sqlx::Error::PoolClosed);
         }
         let mut rows = sqlx::query(sql)

@@ -6,7 +6,6 @@ use tokio;
 use sqlx::Row;
 
 fn get_mysql_client_test<'a>() -> mysqlaccessor::MySQLAccessor<'a> {
-    let env_map_option = test_env::init();
     let get_default = || mysqlaccessor::MySQLAccessor::new()
         .host("localhost")
         .port(3306)
@@ -14,23 +13,28 @@ fn get_mysql_client_test<'a>() -> mysqlaccessor::MySQLAccessor<'a> {
         .passwd("")
         .db("test")
         .charset("utf8");
-    match env_map_option {
-        Some(env_map) => {
-            if env_map.contains_key("mysql.host") && env_map.contains_key("mysql.port") {
-                return get_default();
-            }
-            get_default()
-        },
-        None => get_default()
+    let env_map = &test_env::ENV_CONFIG;
+    if env_map.contains_key("mysql.host") &&
+        env_map.contains_key("mysql.port") &&
+        env_map.contains_key("mysql.user") &&
+        env_map.contains_key("mysql.passwd") &&
+        env_map.contains_key("mysql.db") {
+        return mysqlaccessor::MySQLAccessor::new()
+            .host(env_map.get("mysql.host").unwrap().as_str())
+            .port(env_map.get("mysql.port").unwrap().parse::<u16>().unwrap())
+            .user(env_map.get("mysql.user").unwrap().as_str())
+            .passwd(env_map.get("mysql.passwd").unwrap().as_str())
+            .db(env_map.get("mysql.db").unwrap().as_str())
+            .charset("utf8");
     }
-
+    get_default()
 }
 
 #[tokio::test]
 async fn test_mysql_async_select() -> Result<(), String> {
     let mut mysql_client = get_mysql_client_test();
     let _ = mysql_client.async_open_conn().await.unwrap();
-    match mysql_client.async_do_sql("").await {
+    match mysql_client.async_do_sql("select `id` from test_table").await {
         Ok(rows_option) => match rows_option {
             Some(rows) => {
                 if rows.len() == 0 {
@@ -43,8 +47,8 @@ async fn test_mysql_async_select() -> Result<(), String> {
                     false => Err(String::from("do mysql_async_select fail"))
                 }
             }
-            None => Err(String::from("do mysql_async_select fail"))
+            None => {Err(String::from("do mysql_async_select fail"))}
         },
-        Err(_) => Err(String::from("do mysql_async_select fail"))
+        Err(_) => {Err(String::from("do mysql_async_select fail"))}
     }
 }

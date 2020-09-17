@@ -1380,6 +1380,7 @@ dependencies = [
  "chrono",
  "env_logger",
  "futures",
+ "lazy_static",
  "log",
  "redis",
  "reqwest",
