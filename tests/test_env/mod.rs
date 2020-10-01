@@ -14,7 +14,3 @@ lazy_static! {
         env_map
     };
 }
-
-pub fn init() {
-
-}

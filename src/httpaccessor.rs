@@ -1,6 +1,5 @@
 use tokio::time::Duration;
 use futures::{future, StreamExt, Future};
-use reqwest::Response;
 use futures::task::{Context, Poll};
 use tokio::macros::support::Pin;
 
@@ -35,6 +34,7 @@ impl HttpAccessorResponse {
     }
 }
 
+#[derive(Debug)]
 pub struct HttpAccessorResponseError {
     pub(crate) url: String,
     pub(crate) status_code: Option<u16>,
@@ -69,7 +69,7 @@ struct DummyFutureError {
 impl future::Future for DummyFutureError {
     type Output = ();
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         unimplemented!()
     }
 }
@@ -142,9 +142,9 @@ impl HttpAccessor {
         }
     }
 
-    pub async fn async_multi_get(urls: &Vec<&str>, timeout: u32) -> Result<Vec<Result<HttpAccessorResponse, HttpAccessorResponseError>>, HttpAccessorError> {
+    pub async fn async_multi_get(urls: &[&str], timeout: u32) -> Result<Vec<Result<HttpAccessorResponse, HttpAccessorResponseError>>, HttpAccessorError> {
         let resp_future_list = futures::stream::iter(
-            urls.into_iter().map(|url| {
+            urls.iter().map(|url| {
                 async move {
                     HttpAccessor::async_get(url, timeout).await
                 }
@@ -154,9 +154,9 @@ impl HttpAccessor {
         Ok(resp_wrapper_list)
     }
 
-    pub async fn async_multi_get_unordered(urls: &Vec<&str>, timeout: u32) -> Result<Vec<Result<HttpAccessorResponse, HttpAccessorResponseError>>, HttpAccessorError> {
+    pub async fn async_multi_get_unordered(urls: &[&str], timeout: u32) -> Result<Vec<Result<HttpAccessorResponse, HttpAccessorResponseError>>, HttpAccessorError> {
         let resp_future_list = futures::stream::iter(
-            urls.into_iter().map(|url| {
+            urls.iter().map(|url| {
                 async move {
                     HttpAccessor::async_get(url, timeout).await
                 }

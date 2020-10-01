@@ -109,7 +109,7 @@ impl<'a> RedisAccessor<'a> {
         self.client = Some(client);
         self.conn = match self.client.as_ref().unwrap().get_connection() {
             Ok(c) => Some(c),
-            Err(e) => None
+            Err(_e) => None
         };
         Ok(())
     }
@@ -133,7 +133,7 @@ impl<'a> RedisAccessor<'a> {
         self.client = Some(client);
         self.async_conn = match self.client.as_ref().unwrap().get_async_connection().await {
             Ok(c) => Some(c),
-            Err(e) => None
+            Err(_e) => None
         };
         Ok(())
     }

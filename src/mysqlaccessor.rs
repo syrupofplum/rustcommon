@@ -1,7 +1,6 @@
-use sqlx;
 use futures::TryStreamExt;
 use sqlx::mysql::{MySqlRow, MySqlConnectOptions};
-use sqlx::{Connection, Row};
+use sqlx::Connection;
 
 macro_rules! check_conn_open {
     ($ins:expr) => {
@@ -122,19 +121,18 @@ impl<'a> MySQLAccessor<'a> {
         let connect_options = self.get_connect_option();
         self.conn_pool = match sqlx::MySqlPool::connect_with(connect_options).await {
             Ok(pool) => Some(pool),
-            Err(e) => None
+            Err(_e) => None
         };
         Ok(())
     }
 
     pub async fn async_do_sql(&mut self, sql: &str) -> Result<Option<Vec<sqlx::mysql::MySqlRow>>, MysqlAccessorError> {
         check_conn_open!(self);
+        let map_fetch_row_err: fn(sqlx::Error) -> MysqlAccessorError = move |e| MysqlAccessorError { err_type: MysqlAccessorErrorType::SqlFetchRowError(e) };
         let mut rows = sqlx::query(sql)
             .fetch(self.conn.as_mut().unwrap());
         let mut rst: Vec<MySqlRow> = Vec::new();
-        while let Some(row) = rows.try_next().await.map_err(move |e| MysqlAccessorError {
-            err_type: MysqlAccessorErrorType::SqlFetchRowError(e)
-        })? {
+        while let Some(row) = rows.try_next().await.map_err(map_fetch_row_err)? {
             rst.push(row);
         }
         Ok(Some(rst))
@@ -142,12 +140,11 @@ impl<'a> MySQLAccessor<'a> {
 
     pub async fn async_do_sql_pool(&self, sql: &str) -> Result<Option<Vec<sqlx::mysql::MySqlRow>>, MysqlAccessorError> {
         check_conn_pool_open!(self);
+        let map_fetch_row_err: fn(sqlx::Error) -> MysqlAccessorError = move |e| MysqlAccessorError { err_type: MysqlAccessorErrorType::SqlFetchRowError(e) };
         let mut rows = sqlx::query(sql)
             .fetch(self.conn_pool.as_ref().unwrap());
         let mut rst: Vec<MySqlRow> = Vec::new();
-        while let Some(row) = rows.try_next().await.map_err(move |e| MysqlAccessorError {
-            err_type: MysqlAccessorErrorType::SqlFetchRowError(e)
-        })? {
+        while let Some(row) = rows.try_next().await.map_err(map_fetch_row_err)? {
             rst.push(row);
         }
         Ok(Some(rst))

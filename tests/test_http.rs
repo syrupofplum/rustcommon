@@ -10,7 +10,9 @@ async fn test_http_async_get() -> Result<(), String> {
             200 => Ok(()),
             _ => Err(String::from("do http_async_get fail"))
         },
-        Err(e) => Err(String::from("do http_async_get fail"))
+        Err(e) => {
+            Err(String::from("do http_async_get fail"))
+        }
     }
 }
 
