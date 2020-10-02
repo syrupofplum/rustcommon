@@ -232,4 +232,17 @@ impl<'a> RedisAccessor<'a> {
         }
         RedisAccessor::async_pipe_execute(pipe, self.async_conn.as_mut().unwrap()).await
     }
+
+    pub async fn async_multi_setnx_expire(&mut self, dataset: Vec<(String, String, usize)>) -> Result<(), RedisAccessorError> {
+        check_async_conn_open!(self);
+        if dataset.is_empty() {
+            return Ok(());
+        }
+        let mut pipe = &mut redis::pipe();
+        for data in dataset {
+            pipe = pipe.cmd("SETNX").arg(data.0.clone()).arg(data.1);
+            pipe = pipe.cmd("EXPIRE").arg(data.0).arg(data.2)
+        }
+        RedisAccessor::async_pipe_execute(pipe, self.async_conn.as_mut().unwrap()).await
+    }
 }

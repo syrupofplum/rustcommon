@@ -41,8 +41,8 @@ async fn test_redis_async_multi_set() -> Result<(), String> {
 async fn test_redis_async_multi_setex_expire() -> Result<(), String> {
     let mut redisaccessor = get_redis_client_test();
     let _ = redisaccessor.async_open_conn().await.unwrap();
-    let dataset = vec![("test1_nx".to_string(), "jjj2".to_string()), ("test2_nx".to_string(), "kkk2".to_string())];
-    let rst = redisaccessor.async_multi_setnx(dataset).await;
+    let dataset = vec![("test1_nx".to_string(), "jjj2".to_string(), 300), ("test2_nx".to_string(), "kkk2".to_string(), 360)];
+    let rst = redisaccessor.async_multi_setnx_expire(dataset).await;
     match rst {
         Ok(_) => Ok(()),
         Err(_) => Err(String::from("do redis_async_multi_set fail"))
