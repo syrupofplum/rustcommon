@@ -148,9 +148,10 @@ impl<'a> RedisAccessor<'a> {
         }
     }
 
-    pub fn get(&mut self, key: &str) -> Result<redis::Value, RedisAccessorError> {
+    pub fn get<T>(&mut self, key: &str) -> Result<T, RedisAccessorError>
+    where T: redis::FromRedisValue {
         check_conn_open!(self);
-        let rst: RedisResult<redis::Value> = self.conn.as_mut().unwrap().get(key);
+        let rst: RedisResult<T> = self.conn.as_mut().unwrap().get(key);
         match rst {
             Ok(r) => Ok(r),
             Err(e) => Err(RedisAccessorError {
@@ -159,7 +160,8 @@ impl<'a> RedisAccessor<'a> {
         }
     }
 
-    pub async fn async_get<T: redis::FromRedisValue>(&mut self, key: &str) -> Result<T, RedisAccessorError> {
+    pub async fn async_get<T>(&mut self, key: &str) -> Result<T, RedisAccessorError>
+    where T: redis::FromRedisValue {
         check_async_conn_open!(self);
         let rst: RedisResult<T> = redis::cmd("GET").arg(key).query_async(self.async_conn.as_mut().unwrap()).await;
         match rst {
