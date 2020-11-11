@@ -1,6 +1,7 @@
 use actix::prelude::*;
 use actix_redis::{Command, RedisActor, Error};
 use redis_async::{resp::RespValue, resp_array};
+use crate::redisaccessor::{RedisAccessorError, RedisAccessorErrorType, RedisAccessor};
 
 macro_rules! check_conn_open {
     ($ins:expr) => {
@@ -14,22 +15,6 @@ macro_rules! check_conn_open {
     };
 }
 
-#[derive(Debug)]
-pub struct RedisAccessorError {
-    err_type: RedisAccessorErrorType
-}
-
-#[derive(Debug)]
-enum RedisAccessorErrorType {
-    ConnNotOpen,
-    AuthError,
-    AuthSuccess,
-    AuthFailed,
-    OpenConnError,
-    GetContentError,
-    SetContentError
-}
-
 pub struct RedisAccessorActix<'a> {
     pub(crate) host: &'a str,
     pub(crate) port: u16,
@@ -38,6 +23,9 @@ pub struct RedisAccessorActix<'a> {
     pub(crate) db: i64,
 
     pub(crate) addr: Option<Addr<RedisActor>>
+}
+
+impl<'a> RedisAccessor for RedisAccessorActix<'a> {
 }
 
 impl<'a> RedisAccessorActix<'a> {
@@ -73,25 +61,45 @@ impl<'a> RedisAccessorActix<'a> {
         self
     }
 
+    pub fn db(mut self, db: i64) -> Self {
+        self.db = db;
+        self
+    }
+
     pub fn open_connection(&mut self) -> Result<(), RedisAccessorError> {
-        let addr_str = format!("{}:{}", self.host, self.port);
-        self.addr = Some(actix_redis::RedisActor::start(addr_str));
+        if self.addr.is_none() {
+            let addr_str = format!("{}:{}", self.host, self.port);
+            self.addr = Some(actix_redis::RedisActor::start(addr_str));
+        }
         Ok(())
     }
 
-    async fn auth(&self) -> Result<bool, RedisAccessorError> {
+    async fn send_auth(&self) -> Result<bool, RedisAccessorError> {
         check_conn_open!(self);
+        let gen_conn_err_closure = || RedisAccessorError {
+            err_type: RedisAccessorErrorType::OpenConnError
+        };
         let auth_future = self.addr.as_ref().unwrap().send(Command(resp_array!["AUTH", self.passwd]));
-        let auth_resp = auth_future.await;
+        let auth_resp = auth_future.await.map_err(|_| gen_conn_err_closure())?.map_err(|_| gen_conn_err_closure())?;
         match auth_resp {
-            Ok(r) => match r {
-                Ok(RespValue::SimpleString(x)) => {
-                    if x == "OK" {
-                        Ok(true)
-                    } else {
-                        Ok(false)
-                    }
-                },
+            RespValue::SimpleString(x) => match x.as_str() {
+                "OK" => Ok(true),
+                _ => Ok(false)
+            },
+            _ => Ok(false)
+        }
+    }
+
+    async fn send_select_db(&self) -> Result<bool, RedisAccessorError> {
+        check_conn_open!(self);
+        let gen_conn_err_closure = || RedisAccessorError {
+            err_type: RedisAccessorErrorType::OpenConnError
+        };
+        let auth_future = self.addr.as_ref().unwrap().send(Command(resp_array!["SELECT", self.db.to_string()]));
+        let auth_resp = auth_future.await.map_err(|_| gen_conn_err_closure())?.map_err(|_| gen_conn_err_closure())?;
+        match auth_resp {
+            RespValue::SimpleString(x) => match x.as_str() {
+                "OK" => Ok(true),
                 _ => Ok(false)
             },
             _ => Ok(false)
@@ -109,14 +117,15 @@ impl<'a> RedisAccessorActix<'a> {
             },
             Ok(RespValue::Error(x)) => {
                 if x.starts_with("NOAUTH") && !is_last_cmd_auth {
-                    self.auth().await;
+                    self.send_auth().await.map_err(|e| e.err_type)?;
+                    self.send_select_db().await.map_err(|e| e.err_type)?;
                     Err(RedisAccessorErrorType::AuthError)
                 } else {
                     Ok(format!("{}", x))
                 }
             },
             Ok(RespValue::Nil) => {
-                Ok("".to_string())
+                Err(RedisAccessorErrorType::GetKeyNotExist)
             },
             Ok(RespValue::BulkString(x)) => {
                 Ok(format!("{}", String::from_utf8_lossy(&x).to_string()))
@@ -135,9 +144,12 @@ impl<'a> RedisAccessorActix<'a> {
 
     pub async fn get(&self, key: &str) -> Result<String, RedisAccessorError> {
         check_conn_open!(self);
-        let gen_err_closure = || Err(RedisAccessorError {
+        let gen_err_closure = || RedisAccessorError {
             err_type: RedisAccessorErrorType::GetContentError
-        });
+        };
+        let gen_not_exist_closure = || RedisAccessorError {
+            err_type: RedisAccessorErrorType::GetKeyNotExist
+        };
         let redis_send_result =  self.addr.as_ref().unwrap().send(Command(resp_array!["GET", key])).await;
         match redis_send_result {
             Ok(resp_value) => match self.match_resp_value(resp_value.as_ref(), false).await {
@@ -148,15 +160,15 @@ impl<'a> RedisAccessorActix<'a> {
                         match redis_send_result {
                             Ok(resp_value) => match self.match_resp_value(resp_value.as_ref(), true).await {
                                 Ok(s) => Ok(s),
-                                Err(e) => gen_err_closure()
+                                Err(e) => Err(gen_not_exist_closure())
                             }
-                            _ => gen_err_closure()
+                            _ => Err(gen_err_closure())
                         }
                     },
-                    _ => gen_err_closure()
+                    _ => Err(gen_err_closure())
                 }
             }
-            _ => gen_err_closure()
+            _ => Err(gen_err_closure())
         }
     }
 }
