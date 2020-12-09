@@ -13,7 +13,7 @@ fn get_mysql_client_test<'a>() -> mysqlaccessor_async::MySQLAccessorAsync<'a> {
         .passwd("")
         .db("test")
         .charset("utf8");
-    let env_map = &test_env::ENV_CONFIG;
+    let ref env_map = test_env::ENV_CONFIG;
     if env_map.contains_key("mysql.host") &&
         env_map.contains_key("mysql.port") &&
         env_map.contains_key("mysql.user") &&

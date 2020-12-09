@@ -11,7 +11,7 @@ fn get_redis_client_test<'a>() -> redisaccessor_async::RedisAccessorAsync<'a> {
         .port(6379)
         .passwd("")
         .db(0);
-    let env_map = &test_env::ENV_CONFIG;
+    let ref env_map = test_env::ENV_CONFIG;
     if env_map.contains_key("redis.host") &&
         env_map.contains_key("redis.port") &&
         env_map.contains_key("redis.passwd") &&
