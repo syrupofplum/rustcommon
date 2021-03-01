@@ -135,7 +135,7 @@ impl HttpAccessor {
                     status_code: None,
                     err: Some(HttpAccessorError {
                         err_type: HttpAccessorErrorType::OpenUrlError(e),
-                        msg: "async get fail".to_string()
+                        msg: "async post fail".to_string()
                     })
                 })?;
             HttpAccessor::handle_async_resp(url, resp).await
